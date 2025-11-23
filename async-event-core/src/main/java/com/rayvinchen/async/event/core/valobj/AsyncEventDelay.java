@@ -35,7 +35,7 @@ public class AsyncEventDelay implements Delayed {
     public AsyncEventDelay(AsyncEvent asyncEvent) {
         this.eventId = asyncEvent.getId();
         this.asyncEvent = asyncEvent;
-        this.executeTimeMillis = toMillis(asyncEvent.getExpectTime());
+        this.executeTimeMillis = toMillis(asyncEvent.getExpectExecAt());
     }
 
     /**

@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  * </p>
  *
  * @author rayvinchen
- * @since 2025-11-22
+ * @since 2025-11-23
  */
 @Getter
 @Setter
@@ -25,39 +25,44 @@ import java.time.LocalDateTime;
 @TableName("async_event_record")
 public class DBAsyncEventRecord {
 
-      /**
+    /**
      * 主键ID
      */
-      @TableId(value = "id", type = IdType.AUTO)
+    @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
-      /**
+    /**
      * 事件ID
      */
-      private Long eventId;
+    private Long eventId;
 
-      /**
+    /**
      * 事件状态
      */
-      private Byte executeStatus;
+    private Byte eventStatus;
 
-      /**
+    /**
      * 执行时间
      */
-      private LocalDateTime executeTime;
+    private LocalDateTime execAt;
 
-      /**
+    /**
      * 失败原因
      */
-      private String failReason;
+    private String failReason;
 
-      /**
+    /**
+     * 操作人
+     */
+    private String operator;
+
+    /**
      * 创建时间
      */
-      private LocalDateTime createTime;
+    private LocalDateTime createAt;
 
-      /**
+    /**
      * 更新时间
      */
-      private LocalDateTime updateTime;
+    private LocalDateTime updateAt;
 }

@@ -29,21 +29,21 @@ public class DefaultAsyncEventRepository implements AsyncEventRepository {
     @Override
     public List<AsyncEvent> listAsyncEvents(ListAsyncEventQuery query) {
         LambdaQueryWrapper<DBAsyncEvent> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.in(!CollectionUtils.isEmpty(query.getStatusSet()), DBAsyncEvent::getExecuteStatus, query.getStatusSet());
+        queryWrapper.in(!CollectionUtils.isEmpty(query.getStatusSet()), DBAsyncEvent::getEventStatus, query.getStatusSet());
 
         if (Objects.nonNull(query.getExpectTimeRange())) {
             if (Objects.nonNull(query.getExpectTimeRange().getStart())) {
                 if (query.getExpectTimeRange().isExcludeStart()) {
-                    queryWrapper.gt(DBAsyncEvent::getExpectTime, query.getExpectTimeRange().getStart());
+                    queryWrapper.gt(DBAsyncEvent::getExpectExecAt, query.getExpectTimeRange().getStart());
                 } else {
-                    queryWrapper.ge(DBAsyncEvent::getExpectTime, query.getExpectTimeRange().getStart());
+                    queryWrapper.ge(DBAsyncEvent::getExpectExecAt, query.getExpectTimeRange().getStart());
                 }
             }
             if (Objects.nonNull(query.getExpectTimeRange().getEnd())) {
                 if (query.getExpectTimeRange().isExcludeEnd()) {
-                    queryWrapper.lt(DBAsyncEvent::getExpectTime, query.getExpectTimeRange().getEnd());
+                    queryWrapper.lt(DBAsyncEvent::getExpectExecAt, query.getExpectTimeRange().getEnd());
                 } else {
-                    queryWrapper.le(DBAsyncEvent::getExpectTime, query.getExpectTimeRange().getEnd());
+                    queryWrapper.le(DBAsyncEvent::getExpectExecAt, query.getExpectTimeRange().getEnd());
                 }
             }
         }
@@ -60,9 +60,9 @@ public class DefaultAsyncEventRepository implements AsyncEventRepository {
     @Override
     public int updateEventStatus(Long id, AsyncEventStatusEnum originStatus, AsyncEventStatusEnum newStatus) {
         LambdaUpdateWrapper<DBAsyncEvent> wrapper = new LambdaUpdateWrapper<>();
-        wrapper.set(DBAsyncEvent::getExecuteStatus, newStatus.getCode());
+        wrapper.set(DBAsyncEvent::getEventStatus, newStatus.getCode());
         wrapper.eq(DBAsyncEvent::getId, id)
-                .eq(DBAsyncEvent::getExecuteStatus, originStatus.getCode());
+                .eq(DBAsyncEvent::getEventStatus, originStatus.getCode());
 
         return asyncEventMapper.update(null, wrapper);
     }
@@ -86,11 +86,11 @@ public class DefaultAsyncEventRepository implements AsyncEventRepository {
         entity.setId(model.getId());
         entity.setEventType(model.getEventType());
         entity.setEventData(model.getEventData());
-        entity.setExpectTime(model.getExpectTime());
-        entity.setExecuteTime(model.getExecuteTime());
-        entity.setFinishedTime(model.getFinishedTime());
-        entity.setExecuteTimes(model.getExecuteTimes());
-        entity.setExecuteStatus(model.getExecuteStatus());
+        entity.setExpectExecAt(model.getExpectExecAt());
+        entity.setExecAt(model.getExecAt());
+        entity.setFinishedAt(model.getFinishedAt());
+        entity.setExecTimes(model.getExecTimes());
+        entity.setEventStatus(model.getEventStatus());
         entity.setCreator(model.getCreator());
         return entity;
     }
@@ -100,11 +100,11 @@ public class DefaultAsyncEventRepository implements AsyncEventRepository {
         model.setId(event.getId());
         model.setEventType(event.getEventType());
         model.setEventData(event.getEventData());
-        model.setExpectTime(event.getExpectTime());
-        model.setExecuteTime(event.getExecuteTime());
-        model.setFinishedTime(event.getFinishedTime());
-        model.setExecuteTimes(event.getExecuteTimes());
-        model.setExecuteStatus(event.getExecuteStatus());
+        model.setExpectExecAt(event.getExpectExecAt());
+        model.setExecAt(event.getExecAt());
+        model.setFinishedAt(event.getFinishedAt());
+        model.setExecTimes(event.getExecTimes());
+        model.setEventStatus(event.getEventStatus());
         model.setCreator(event.getCreator());
         return model;
     }

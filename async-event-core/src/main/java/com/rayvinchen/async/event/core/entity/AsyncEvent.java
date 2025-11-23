@@ -32,27 +32,27 @@ public class AsyncEvent {
     /**
      * 期望的执行时间
      */
-    private LocalDateTime expectTime;
+    private LocalDateTime expectExecAt;
 
     /**
      * 执行时间
      */
-    private LocalDateTime executeTime;
+    private LocalDateTime execAt;
 
     /**
      * 完成时间
      */
-    private LocalDateTime finishedTime;
+    private LocalDateTime finishedAt;
 
     /**
      * 执行次数
      */
-    private Integer executeTimes;
+    private Integer execTimes;
 
     /**
-     * 执行状态
+     * 事件状态
      */
-    private Byte executeStatus;
+    private Byte eventStatus;
 
     /**
      * 创建人

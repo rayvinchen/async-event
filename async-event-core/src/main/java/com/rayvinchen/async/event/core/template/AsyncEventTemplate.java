@@ -38,14 +38,14 @@ public class AsyncEventTemplate {
         AsyncEvent asyncEvent = new AsyncEvent();
         asyncEvent.setEventType(eventType);
         asyncEvent.setEventData(eventData);
-        asyncEvent.setExecuteStatus(AsyncEventStatusEnum.WAIT_EXEC.getCode());
-        asyncEvent.setExpectTime(expectExecuteTime);
+        asyncEvent.setEventStatus(AsyncEventStatusEnum.WAIT_EXEC.getCode());
+        asyncEvent.setExpectExecAt(expectExecuteTime);
         asyncEvent.setCreator(creator);
         asyncEventRepository.addAsyncEvent(asyncEvent);
 
         AsyncEventRecord asyncEventRecord = new AsyncEventRecord();
         asyncEventRecord.setEventId(asyncEvent.getId());
-        asyncEventRecord.setExecuteStatus(asyncEvent.getExecuteStatus());
+        asyncEventRecord.setEventStatus(asyncEvent.getEventStatus());
         asyncEventRecord.setOperator(creator);
         asyncEventRecordRepository.addAsyncEventRecord(asyncEventRecord);
 
@@ -70,12 +70,12 @@ public class AsyncEventTemplate {
         }
         AsyncEvent waitUpdateEvent = new AsyncEvent();
         waitUpdateEvent.setId(eventId);
-        waitUpdateEvent.setExecuteStatus(AsyncEventStatusEnum.CANCEL.getCode());
+        waitUpdateEvent.setEventStatus(AsyncEventStatusEnum.CANCEL.getCode());
         asyncEventRepository.updateAsyncEventById(waitUpdateEvent);
 
         AsyncEventRecord asyncEventRecord = new AsyncEventRecord();
         asyncEventRecord.setEventId(eventId);
-        asyncEventRecord.setExecuteStatus(waitUpdateEvent.getExecuteStatus());
+        asyncEventRecord.setEventStatus(waitUpdateEvent.getEventStatus());
         asyncEventRecord.setOperator(operator);
         asyncEventRecordRepository.addAsyncEventRecord(asyncEventRecord);
     }

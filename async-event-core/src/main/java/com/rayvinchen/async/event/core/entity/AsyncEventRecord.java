@@ -25,14 +25,14 @@ public class AsyncEventRecord {
     private Long eventId;
 
     /**
-     * 执行状态
+     * 事件状态
      */
-    private Byte executeStatus;
+    private Byte eventStatus;
 
     /**
      * 执行时间
      */
-    private LocalDateTime executeTime;
+    private LocalDateTime execAt;
 
     /**
      * 执行失败原因
@@ -43,15 +43,5 @@ public class AsyncEventRecord {
      * 操作人
      */
     private String operator;
-
-    /**
-     * 创建时间
-     */
-    private LocalDateTime createTime;
-
-    /**
-     * 更新时间
-     */
-    private LocalDateTime updateTime;
 
 }

@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  * </p>
  *
  * @author rayvinchen
- * @since 2025-11-22
+ * @since 2025-11-23
  */
 @Getter
 @Setter
@@ -44,27 +44,32 @@ public class DBAsyncEvent {
     /**
      * 事件状态
      */
-    private Byte executeStatus;
+    private Byte eventStatus;
 
     /**
      * 期望执行时间
      */
-    private LocalDateTime expectTime;
+    private LocalDateTime expectExecAt;
 
     /**
      * 执行时间
      */
-    private LocalDateTime executeTime;
+    private LocalDateTime execAt;
+
+    /**
+     * 心跳时间
+     */
+    private LocalDateTime heartbeatAt;
 
     /**
      * 完成时间
      */
-    private LocalDateTime finishedTime;
+    private LocalDateTime finishedAt;
 
     /**
      * 执行次数
      */
-    private Integer executeTimes;
+    private Integer execTimes;
 
     /**
      * 创建者
@@ -74,10 +79,10 @@ public class DBAsyncEvent {
     /**
      * 创建时间
      */
-    private LocalDateTime createTime;
+    private LocalDateTime createAt;
 
     /**
      * 更新时间
      */
-    private LocalDateTime updateTime;
+    private LocalDateTime updateAt;
 }

@@ -22,8 +22,8 @@ public class DefaultAsyncEventRecordRepository implements AsyncEventRecordReposi
     public int addAsyncEventRecord(AsyncEventRecord record) {
         DBAsyncEventRecord model = new DBAsyncEventRecord();
         model.setEventId(record.getEventId());
-        model.setExecuteStatus(record.getExecuteStatus());
-        model.setExecuteTime(record.getExecuteTime());
+        model.setEventStatus(record.getEventStatus());
+        model.setExecAt(record.getExecAt());
         model.setFailReason(record.getFailReason());
         int affectRows = asyncEventRecordMapper.insert(model);
         record.setId(model.getId());

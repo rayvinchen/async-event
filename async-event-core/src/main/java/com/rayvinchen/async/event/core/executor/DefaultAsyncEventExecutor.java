@@ -79,23 +79,23 @@ public class DefaultAsyncEventExecutor implements AsyncEventExecutor {
     }
 
     private void beforeHandle(AsyncEvent event) {
-        if (Objects.equals(event.getExecuteStatus(), AsyncEventStatusEnum.WAIT_EXEC.getCode())) {
+        if (Objects.equals(event.getEventStatus(), AsyncEventStatusEnum.WAIT_EXEC.getCode())) {
             // 将任务状态从待执行改为执行中
             int affectRows = asyncEventRepository.updateEventStatus(event.getId(), AsyncEventStatusEnum.WAIT_EXEC, AsyncEventStatusEnum.EXECUTING);
-            Asserts.check(affectRows > 0, String.format("[AsyncEvent] Fail to update status. before: %s. event: %d", event.getExecuteStatus(), event.getId()));
+            Asserts.check(affectRows > 0, String.format("[AsyncEvent] Fail to update status. before: %s. event: %d", event.getEventStatus(), event.getId()));
             // 更新执行时间
             AsyncEvent waitUpdateEvent = new AsyncEvent();
             waitUpdateEvent.setId(event.getId());
-            waitUpdateEvent.setExecuteTime(LocalDateTime.now());
+            waitUpdateEvent.setExecAt(LocalDateTime.now());
             asyncEventRepository.updateAsyncEventById(waitUpdateEvent);
-        } else if (Objects.equals(event.getExecuteStatus(), AsyncEventStatusEnum.WAIT_RETRY.getCode())) {
+        } else if (Objects.equals(event.getEventStatus(), AsyncEventStatusEnum.WAIT_RETRY.getCode())) {
             // 将任务状态从待执行改为执行中
             int affectRows = asyncEventRepository.updateEventStatus(event.getId(), AsyncEventStatusEnum.WAIT_RETRY, AsyncEventStatusEnum.EXECUTING);
-            Asserts.check(affectRows > 0, String.format("[AsyncEvent] Fail to update status. before: %s. event: %d", event.getExecuteStatus(), event.getId()));
-        } else if (Objects.equals(event.getExecuteStatus(), AsyncEventStatusEnum.EXECUTING.getCode())) {
+            Asserts.check(affectRows > 0, String.format("[AsyncEvent] Fail to update status. before: %s. event: %d", event.getEventStatus(), event.getId()));
+        } else if (Objects.equals(event.getEventStatus(), AsyncEventStatusEnum.EXECUTING.getCode())) {
             event = asyncEventRepository.getAsyncEvent(event.getId());
             // 加锁后查询数据库最新状态，如果还是执行中，说明任务执行过程出现异常，重新执行
-            Asserts.check(Objects.equals(event.getExecuteStatus(), AsyncEventStatusEnum.EXECUTING.getCode()),
+            Asserts.check(Objects.equals(event.getEventStatus(), AsyncEventStatusEnum.EXECUTING.getCode()),
                     String.format("[AsyncEvent] Fail to Update status. event: %d", event.getId()));
         }
     }
@@ -111,15 +111,15 @@ public class DefaultAsyncEventExecutor implements AsyncEventExecutor {
     private void afterHandleSuccess(AsyncEvent event) {
         AsyncEvent waitUpdateEvent = new AsyncEvent();
         waitUpdateEvent.setId(event.getId());
-        waitUpdateEvent.setFinishedTime(LocalDateTime.now());
-        waitUpdateEvent.setExecuteTimes(event.getExecuteTimes() + 1);
-        waitUpdateEvent.setExecuteStatus(AsyncEventStatusEnum.EXECUTE_SUCCESS.getCode());
+        waitUpdateEvent.setFinishedAt(LocalDateTime.now());
+        waitUpdateEvent.setExecTimes(event.getExecTimes() + 1);
+        waitUpdateEvent.setEventStatus(AsyncEventStatusEnum.EXECUTE_SUCCESS.getCode());
         asyncEventRepository.updateAsyncEventById(waitUpdateEvent);
 
         AsyncEventRecord record = new AsyncEventRecord();
         record.setEventId(event.getId());
-        record.setExecuteStatus(AsyncEventStatusEnum.EXECUTE_SUCCESS.getCode());
-        record.setExecuteTime(LocalDateTime.now());
+        record.setEventStatus(AsyncEventStatusEnum.EXECUTE_SUCCESS.getCode());
+        record.setExecAt(LocalDateTime.now());
         record.setOperator(event.getCreator());
         asyncEventRecordRepository.addAsyncEventRecord(record);
     }
@@ -127,25 +127,25 @@ public class DefaultAsyncEventExecutor implements AsyncEventExecutor {
     private void afterHandleFailure(AsyncEvent event, ExecResult execResult) {
         if (handler.existHandler(event.getEventType())
                 && handler.retryable(event.getEventType())
-                && event.getExecuteTimes() < MAX_RETRY_TIMES) {
+                && event.getExecTimes() < MAX_RETRY_TIMES) {
             AsyncEvent waitUpdateEvent = new AsyncEvent();
             waitUpdateEvent.setId(event.getId());
-            waitUpdateEvent.setExecuteTimes(event.getExecuteTimes() + 1);
-            waitUpdateEvent.setExecuteStatus(AsyncEventStatusEnum.WAIT_RETRY.getCode());
-            waitUpdateEvent.setExpectTime(getNextExecuteTime(event));
+            waitUpdateEvent.setExecTimes(event.getExecTimes() + 1);
+            waitUpdateEvent.setEventStatus(AsyncEventStatusEnum.WAIT_RETRY.getCode());
+            waitUpdateEvent.setExpectExecAt(getNextExecuteTime(event));
             asyncEventRepository.updateAsyncEventById(waitUpdateEvent);
         } else {
             AsyncEvent waitUpdateEvent = new AsyncEvent();
             waitUpdateEvent.setId(event.getId());
-            waitUpdateEvent.setExecuteTimes(event.getExecuteTimes() + 1);
-            waitUpdateEvent.setExecuteStatus(AsyncEventStatusEnum.EXECUTE_FAILURE.getCode());
+            waitUpdateEvent.setExecTimes(event.getExecTimes() + 1);
+            waitUpdateEvent.setEventStatus(AsyncEventStatusEnum.EXECUTE_FAILURE.getCode());
             asyncEventRepository.updateAsyncEventById(waitUpdateEvent);
         }
 
         AsyncEventRecord record = new AsyncEventRecord();
         record.setEventId(event.getId());
-        record.setExecuteStatus(AsyncEventStatusEnum.EXECUTE_FAILURE.getCode());
-        record.setExecuteTime(LocalDateTime.now());
+        record.setEventStatus(AsyncEventStatusEnum.EXECUTE_FAILURE.getCode());
+        record.setExecAt(LocalDateTime.now());
         record.setFailReason(execResult.getFailReason());
         record.setOperator(event.getCreator());
 
@@ -153,7 +153,7 @@ public class DefaultAsyncEventExecutor implements AsyncEventExecutor {
     }
 
     private LocalDateTime getNextExecuteTime(AsyncEvent event) {
-        int minute = (int) Math.pow(2.0, event.getExecuteTimes());
+        int minute = (int) Math.pow(2.0, event.getExecTimes());
         return LocalDateTime.now().plusMinutes(minute);
     }
 
