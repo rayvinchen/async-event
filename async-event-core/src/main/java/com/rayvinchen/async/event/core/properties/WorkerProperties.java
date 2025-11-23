@@ -9,7 +9,7 @@ import lombok.Data;
  * @since 2025/11/28 19:26
  */
 @Data
-public class ThreadPoolProperties {
+public class WorkerProperties {
     /**
      * 核心线程数 (0=自动根据CPU核心数*2)
      */
@@ -39,6 +39,11 @@ public class ThreadPoolProperties {
      * 关闭超时时间(秒)
      */
     private int shutdownTimeoutSeconds;
+
+    /**
+     * 心跳更新间隔(秒)
+     */
+    private int heartbeatIntervalSeconds = 10;
 
     /**
      * 获取实际的核心线程数

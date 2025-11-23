@@ -3,7 +3,7 @@ package com.rayvinchen.async.event.boot.starter.loader;
 import com.rayvinchen.async.event.boot.starter.AsyncEventProperties;
 import com.rayvinchen.async.event.core.entity.AsyncEvent;
 import com.rayvinchen.async.event.core.enums.AsyncEventStatusEnum;
-import com.rayvinchen.async.event.core.executor.AsyncEventDispatcher;
+import com.rayvinchen.async.event.core.AsyncEventWorker;
 import com.rayvinchen.async.event.core.repository.AsyncEventRepository;
 import com.rayvinchen.async.event.core.valobj.ListAsyncEventQuery;
 import com.rayvinchen.async.event.core.valobj.Range;
@@ -34,16 +34,16 @@ public class DefaultAsyncEventLoader implements AsyncEventLoader, InitializingBe
     private final AsyncEventRepository asyncEventRepository;
     private final AsyncEventProperties properties;
 
-    private final AsyncEventDispatcher dispatcher;
+    private final AsyncEventWorker worker;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread loaderThread;
 
     public DefaultAsyncEventLoader(AsyncEventProperties properties,
-                                   AsyncEventDispatcher dispatcher,
+                                   AsyncEventWorker worker,
                                    AsyncEventRepository asyncEventRepository) {
         this.properties = properties;
-        this.dispatcher = dispatcher;
+        this.worker = worker;
         this.asyncEventRepository = asyncEventRepository;
     }
 
@@ -131,19 +131,20 @@ public class DefaultAsyncEventLoader implements AsyncEventLoader, InitializingBe
             int loadedCount = 0;
             for (AsyncEvent event : events) {
                 // 检查队列容量
-                if (dispatcher.getLoadedTaskCount() >= properties.getQueue().getCapacity()) {
-                    log.warn("Task queue capacity reached limit: {}", properties.getQueue().getCapacity());
+                int queueCapacity = properties.getWorker().getQueueCapacity();
+                if (worker.getLoadedTaskCount() >= 2 * queueCapacity) {
+                    log.warn("Task queue capacity reached limit: {}", 2 * queueCapacity);
                     break;
                 }
 
                 // 加入队列
-                dispatcher.offer(event);
+                worker.offer(event);
                 loadedCount++;
                 log.debug("Task loaded: {}", event);
             }
 
             log.info("Loaded {} tasks to memory queue. Total loaded tasks: {}, Queue size: {}",
-                    loadedCount, dispatcher.getLoadedTaskCount(), dispatcher.getTaskQueueSize());
+                    loadedCount, worker.getLoadedTaskCount(), worker.getTaskQueueSize());
 
         } catch (Exception e) {
             log.error("Error occurred while loading tasks", e);

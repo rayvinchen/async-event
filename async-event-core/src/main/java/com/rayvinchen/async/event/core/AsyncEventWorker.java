@@ -1,8 +1,9 @@
-package com.rayvinchen.async.event.core.executor;
+package com.rayvinchen.async.event.core;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.rayvinchen.async.event.core.entity.AsyncEvent;
-import com.rayvinchen.async.event.core.properties.ThreadPoolProperties;
+import com.rayvinchen.async.event.core.executor.AsyncEventExecutor;
+import com.rayvinchen.async.event.core.properties.WorkerProperties;
 import com.rayvinchen.async.event.core.valobj.AsyncEventDelay;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.DisposableBean;
@@ -30,13 +31,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @since 2025/11/28
  */
 @Slf4j
-public class AsyncEventDispatcher implements InitializingBean, DisposableBean {
+public class AsyncEventWorker implements InitializingBean, DisposableBean {
 
-    private final ThreadPoolProperties properties;
+    private final WorkerProperties properties;
     private final AsyncEventExecutor executor;
 
-    private final DelayQueue<AsyncEventDelay> taskQueue;
-    private final ConcurrentHashMap<Long, AsyncEventDelay> loadedTasks;
+    private final DelayQueue<AsyncEventDelay> loadedTaskQueue;
+    private final ConcurrentHashMap<Long, AsyncEventDelay> loadedTaskMap;
     private final ConcurrentHashMap<Long, Future<?>> executingTasks;
 
     private Thread dispatcherThread;
@@ -44,13 +45,13 @@ public class AsyncEventDispatcher implements InitializingBean, DisposableBean {
 
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public AsyncEventDispatcher(ThreadPoolProperties properties,
-                                AsyncEventExecutor executor) {
+    public AsyncEventWorker(WorkerProperties properties,
+                            AsyncEventExecutor executor) {
         this.properties = properties;
         this.executor = executor;
 
-        this.taskQueue = new DelayQueue<>();
-        this.loadedTasks = new ConcurrentHashMap<>();
+        this.loadedTaskQueue = new DelayQueue<>();
+        this.loadedTaskMap = new ConcurrentHashMap<>();
         this.executingTasks = new ConcurrentHashMap<>();
     }
 
@@ -61,7 +62,7 @@ public class AsyncEventDispatcher implements InitializingBean, DisposableBean {
         if (running.compareAndSet(false, true)) {
             this.threadPool = createThreadPool(properties);
 
-            dispatcherThread = new Thread(this::dispatchLoop, "async-event-dispatcher");
+            dispatcherThread = new Thread(this::dispatchLoop, "async-event-worker");
             dispatcherThread.setDaemon(false);
             dispatcherThread.start();
             log.info("AsyncEventDispatcher started.");
@@ -116,18 +117,18 @@ public class AsyncEventDispatcher implements InitializingBean, DisposableBean {
         while (isRunning()) {
             try {
                 // 阻塞获取到期任务 (take()方法会自动等待直到有任务到期)
-                AsyncEventDelay task = taskQueue.take();
+                AsyncEventDelay delayTask = loadedTaskQueue.take();
 
                 // 创建任务包装器
-                AsyncEventTaskWrapper taskWrapper = new AsyncEventTaskWrapper(task, this, executor);
+                AsyncEventTask task = new AsyncEventTask(delayTask.getEventId(), this, executor);
 
                 // 提交到线程池执行
-                Future<?> future = threadPool.submit(taskWrapper);
+                Future<?> future = threadPool.submit(task);
 
                 // 记录执行中任务
-                executingTasks.put(task.getEventId(), future);
+                executingTasks.put(delayTask.getEventId(), future);
 
-                log.debug("Task dispatched to thread pool: {}", task);
+                log.debug("Task dispatched to thread pool: {}", delayTask);
 
             } catch (InterruptedException e) {
                 log.info("AsyncEventDispatcher interrupted.");
@@ -147,14 +148,14 @@ public class AsyncEventDispatcher implements InitializingBean, DisposableBean {
      * @param event 事件
      */
     public void offer(AsyncEvent event) {
-        if (loadedTasks.containsKey(event.getId())) {
+        if (loadedTaskMap.containsKey(event.getId())) {
             return;
         }
 
-        AsyncEventDelay task = new AsyncEventDelay(event);
+        AsyncEventDelay delayTask = new AsyncEventDelay(event);
 
-        taskQueue.offer(task);
-        loadedTasks.put(task.getEventId(), task);
+        loadedTaskQueue.offer(delayTask);
+        loadedTaskMap.put(delayTask.getEventId(), delayTask);
 
         log.info("Task Offered: {}", event);
     }
@@ -164,7 +165,7 @@ public class AsyncEventDispatcher implements InitializingBean, DisposableBean {
      */
     public void onTaskCompleted(Long eventId) {
         executingTasks.remove(eventId);
-        loadedTasks.remove(eventId);
+        loadedTaskMap.remove(eventId);
         log.debug("Task completed and removed from memory: eventId={}", eventId);
     }
 
@@ -173,14 +174,14 @@ public class AsyncEventDispatcher implements InitializingBean, DisposableBean {
      */
     public void onTaskFailed(Long eventId) {
         executingTasks.remove(eventId);
-        loadedTasks.remove(eventId);
+        loadedTaskMap.remove(eventId);
         log.debug("Task failed: eventId={}", eventId);
     }
 
     /**
      * 创建异步事件处理线程池
      */
-    private ThreadPoolExecutor createThreadPool(ThreadPoolProperties config) {
+    private ThreadPoolExecutor createThreadPool(WorkerProperties config) {
 
         int corePoolSize = config.getActualCorePoolSize();
         int maximumPoolSize = config.getActualMaxPoolSize();
@@ -235,7 +236,7 @@ public class AsyncEventDispatcher implements InitializingBean, DisposableBean {
      * 获取队列大小
      */
     public int getTaskQueueSize() {
-        return taskQueue.size();
+        return loadedTaskQueue.size();
     }
 
     /**
@@ -244,7 +245,7 @@ public class AsyncEventDispatcher implements InitializingBean, DisposableBean {
      * @return 已加载的任务数量
      */
     public int getLoadedTaskCount() {
-        return loadedTasks.size();
+        return loadedTaskMap.size();
     }
 
     /**

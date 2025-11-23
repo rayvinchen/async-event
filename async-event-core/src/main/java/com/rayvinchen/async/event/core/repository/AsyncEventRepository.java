@@ -5,6 +5,7 @@ import com.rayvinchen.async.event.core.entity.AsyncEvent;
 import com.rayvinchen.async.event.core.enums.AsyncEventStatusEnum;
 import com.rayvinchen.async.event.core.valobj.ListAsyncEventQuery;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -56,5 +57,17 @@ public interface AsyncEventRepository {
      * @return 响应行数
      */
     int addAsyncEvent(AsyncEvent event);
+
+    /**
+     * 周期性心跳更新：仅当事件处于 EXECUTING 时更新心跳时间。
+     *
+     * 实现建议使用数据库时间（如 MySQL NOW(3)）以避免时钟偏移；本参数仅为 SPI 一致性保留。
+     * 返回影响行数：1 表示成功，0 表示条件不满足或事件已不在执行中。
+     *
+     * @param eventId     事件ID
+     * @param heartbeatAt 心跳时间（可选使用）
+     * @return 影响行数
+     */
+    int updateHeartbeat(Long eventId, Instant heartbeatAt);
 
 }

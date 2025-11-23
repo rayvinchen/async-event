@@ -1,7 +1,6 @@
-package com.rayvinchen.async.event.core.executor;
+package com.rayvinchen.async.event.core;
 
-import com.rayvinchen.async.event.core.entity.AsyncEvent;
-import com.rayvinchen.async.event.core.valobj.AsyncEventDelay;
+import com.rayvinchen.async.event.core.executor.AsyncEventExecutor;
 import com.rayvinchen.async.event.core.valobj.AsyncEventExecContext;
 import com.rayvinchen.async.event.core.valobj.ExecResult;
 import lombok.extern.slf4j.Slf4j;
@@ -19,17 +18,17 @@ import lombok.extern.slf4j.Slf4j;
  * @since 2025/11/28
  */
 @Slf4j
-public class AsyncEventTaskWrapper implements Runnable {
+public class AsyncEventTask implements Runnable {
 
-    private final AsyncEventDelay task;
-    private final AsyncEventDispatcher dispatcher;
+    private final Long eventId;
+    private final AsyncEventWorker worker;
     private final AsyncEventExecutor executor;
 
-    public AsyncEventTaskWrapper(AsyncEventDelay task,
-                                 AsyncEventDispatcher dispatcher,
-                                 AsyncEventExecutor executor) {
-        this.task = task;
-        this.dispatcher = dispatcher;
+    public AsyncEventTask(Long eventId,
+                          AsyncEventWorker worker,
+                          AsyncEventExecutor executor) {
+        this.eventId = eventId;
+        this.worker = worker;
         this.executor = executor;
     }
 
@@ -38,19 +37,18 @@ public class AsyncEventTaskWrapper implements Runnable {
         long startTime = System.currentTimeMillis();
 
         try {
-            log.info("Start executing async event task: {}", task);
+            log.info("Start executing async event task: {}", eventId);
 
             // 检查执行器是否已注入
             if (executor == null) {
-                log.error("AsyncEventExecutor not set for task: {}", task);
+                log.error("AsyncEventExecutor not set for task: {}", eventId);
                 handleFailure("Executor not configured", startTime);
                 return;
             }
 
             // 构建执行上下文
-            AsyncEvent asyncEvent = task.getAsyncEvent();
             AsyncEventExecContext context = AsyncEventExecContext.builder()
-                    .eventId(asyncEvent.getId())
+                    .eventId(eventId)
                     .build();
 
             // 调用现有执行器执行任务
@@ -64,7 +62,7 @@ public class AsyncEventTaskWrapper implements Runnable {
             }
 
         } catch (Exception e) {
-            log.error("Unexpected error occurred while executing task: {}", task, e);
+            log.error("Unexpected error occurred while executing task: {}", eventId, e);
             handleFailure("Unexpected error: " + e.getMessage(), startTime);
         }
     }
@@ -76,9 +74,9 @@ public class AsyncEventTaskWrapper implements Runnable {
         long duration = System.currentTimeMillis() - startTime;
 
         // 从内存中移除任务
-        dispatcher.onTaskCompleted(task.getEventId());
+        worker.onTaskCompleted(eventId);
 
-        log.info("Task executed successfully: {}, duration={}ms", task, duration);
+        log.info("Task executed successfully: {}, duration={}ms", eventId, duration);
     }
 
     /**
@@ -88,11 +86,11 @@ public class AsyncEventTaskWrapper implements Runnable {
         long duration = System.currentTimeMillis() - startTime;
 
         log.warn("Task execution failed: {}, reason={}, duration={}ms",
-                task, failReason, duration);
+                eventId, failReason, duration);
 
-        dispatcher.onTaskFailed(task.getEventId());
+        worker.onTaskFailed(eventId);
 
-        log.error("Task execution failed: {}", task);
+        log.error("Task execution failed: {}", eventId);
     }
 
 }

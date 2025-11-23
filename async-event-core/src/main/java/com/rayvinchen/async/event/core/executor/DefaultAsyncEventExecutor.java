@@ -1,5 +1,6 @@
 package com.rayvinchen.async.event.core.executor;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.rayvinchen.async.event.core.entity.AsyncEvent;
 import com.rayvinchen.async.event.core.entity.AsyncEventRecord;
 import com.rayvinchen.async.event.core.enums.AsyncEventStatusEnum;
@@ -13,8 +14,12 @@ import com.rayvinchen.async.event.core.valobj.AsyncEventExecContext;
 import com.rayvinchen.async.event.core.valobj.ExecResult;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Objects;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -36,13 +41,26 @@ public class DefaultAsyncEventExecutor implements AsyncEventExecutor {
 
     private static final int MAX_RETRY_TIMES = 5;
 
+    // 心跳调度相关
+    private final int heartbeatIntervalSeconds;
+    private final ScheduledExecutorService heartbeatScheduler;
+
     public DefaultAsyncEventExecutor(AsyncEventRepository asyncEventRepository,
                                      AsyncEventRecordRepository asyncEventRecordRepository,
-                                     LockTemplate lockTemplate, AsyncEventHandlerDelegate handler) {
+                                     LockTemplate lockTemplate,
+                                     AsyncEventHandlerDelegate handler,
+                                     int heartbeatIntervalSeconds) {
         this.asyncEventRecordRepository = asyncEventRecordRepository;
         this.asyncEventRepository = asyncEventRepository;
         this.lockTemplate = lockTemplate;
         this.handler = handler;
+        this.heartbeatIntervalSeconds = heartbeatIntervalSeconds > 0 ? heartbeatIntervalSeconds : 10;
+
+        // 心跳调度线程池（单线程足够，主要是周期性小写操作）
+        ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(1,
+                new ThreadFactoryBuilder().setNameFormat("async-heartbeat-%d").setDaemon(true).build());
+        scheduler.setRemoveOnCancelPolicy(true);
+        this.heartbeatScheduler = scheduler;
     }
 
     @Override
@@ -59,23 +77,51 @@ public class DefaultAsyncEventExecutor implements AsyncEventExecutor {
         }
 
         AsyncEvent event = asyncEventRepository.getAsyncEvent(eventId);
-
         ExecResult execResult;
+        ScheduledFuture<?> hbFuture = null;
         try {
             beforeHandle(event);
+
+            // 启动心跳（仅在任务进入执行中后启动）
+            hbFuture = heartbeatScheduler.scheduleAtFixedRate(() -> safeUpdateHeartbeat(eventId),
+                    0, heartbeatIntervalSeconds, TimeUnit.SECONDS);
+
             execResult = handler.handle(event.getEventType(), event);
+            afterHandleSuccess(event);
         } catch (AsyncEventException e) {
             log.warn("执行异步任务异常. context: {}", context, e);
             execResult = ExecResult.builder().success(false).failReason(e.getMessage()).build();
+            afterHandleFailure(event, execResult);
         } catch (Exception e) {
             log.error("执行异步任务错误. context: {}", context, e);
             execResult = ExecResult.builder().success(false).failReason("Fail to execute async event.").build();
+            afterHandleFailure(event, execResult);
         } finally {
+            // 取消心跳
+            if (hbFuture != null) {
+                try {
+                    hbFuture.cancel(true);
+                } catch (Exception ignore) {
+                }
+            }
             lockTemplate.unlock(lockRecord);
         }
 
-        afterHandle(event, execResult);
         return execResult;
+    }
+
+    /**
+     * 安全更新心跳，任何异常均只记录日志，不影响业务执行
+     */
+    private void safeUpdateHeartbeat(Long eventId) {
+        try {
+            int n = asyncEventRepository.updateHeartbeat(eventId, Instant.now());
+            if (n == 0) {
+                log.debug("[heartbeat] no-op, event not in EXECUTING. eventId={}", eventId);
+            }
+        } catch (Exception e) {
+            log.warn("[heartbeat] update failed. eventId={}", eventId, e);
+        }
     }
 
     private void beforeHandle(AsyncEvent event) {
@@ -92,20 +138,9 @@ public class DefaultAsyncEventExecutor implements AsyncEventExecutor {
             // 将任务状态从待执行改为执行中
             int affectRows = asyncEventRepository.updateEventStatus(event.getId(), AsyncEventStatusEnum.WAIT_RETRY, AsyncEventStatusEnum.EXECUTING);
             Asserts.check(affectRows > 0, String.format("[AsyncEvent] Fail to update status. before: %s. event: %d", event.getEventStatus(), event.getId()));
-        } else if (Objects.equals(event.getEventStatus(), AsyncEventStatusEnum.EXECUTING.getCode())) {
-            event = asyncEventRepository.getAsyncEvent(event.getId());
-            // 加锁后查询数据库最新状态，如果还是执行中，说明任务执行过程出现异常，重新执行
-            Asserts.check(Objects.equals(event.getEventStatus(), AsyncEventStatusEnum.EXECUTING.getCode()),
-                    String.format("[AsyncEvent] Fail to Update status. event: %d", event.getId()));
         }
-    }
 
-    private void afterHandle(AsyncEvent event, ExecResult execResult) {
-        if (Objects.equals(execResult.isSuccess(), true)) {
-            afterHandleSuccess(event);
-        } else {
-            afterHandleFailure(event, execResult);
-        }
+        event.setEventStatus(AsyncEventStatusEnum.EXECUTING.getCode());
     }
 
     private void afterHandleSuccess(AsyncEvent event) {

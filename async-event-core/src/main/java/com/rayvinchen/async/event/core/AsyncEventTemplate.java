@@ -1,11 +1,10 @@
-package com.rayvinchen.async.event.core.template;
+package com.rayvinchen.async.event.core;
 
 
 import com.rayvinchen.async.event.core.entity.AsyncEvent;
 import com.rayvinchen.async.event.core.entity.AsyncEventRecord;
 import com.rayvinchen.async.event.core.enums.AsyncEventStatusEnum;
 import com.rayvinchen.async.event.core.exception.AsyncEventException;
-import com.rayvinchen.async.event.core.executor.AsyncEventDispatcher;
 import com.rayvinchen.async.event.core.repository.AsyncEventRecordRepository;
 import com.rayvinchen.async.event.core.repository.AsyncEventRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +22,7 @@ public class AsyncEventTemplate {
 
     private final AsyncEventRepository asyncEventRepository;
     private final AsyncEventRecordRepository asyncEventRecordRepository;
-    private final AsyncEventDispatcher asyncEventDispatcher;
+    private final AsyncEventWorker asyncEventWorker;
 
     /**
      * 注册异步事件
@@ -52,7 +51,7 @@ public class AsyncEventTemplate {
         // 如果达到执行时间或即将达到(1分钟内),则直接丢入待执行事件池中,等待执行
         // 这样可以减少数据库扫描压力,让新注册的任务快速进入执行队列
         if (shouldOfferToDispatcher(expectExecuteTime)) {
-            asyncEventDispatcher.offer(asyncEvent);
+            asyncEventWorker.offer(asyncEvent);
         }
     }
 

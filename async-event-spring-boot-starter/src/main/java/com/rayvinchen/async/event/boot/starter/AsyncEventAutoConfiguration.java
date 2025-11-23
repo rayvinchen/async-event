@@ -7,14 +7,14 @@ import com.rayvinchen.async.event.boot.starter.config.MybatisConfig;
 import com.rayvinchen.async.event.boot.starter.config.RepositoryConfig;
 import com.rayvinchen.async.event.boot.starter.loader.AsyncEventLoader;
 import com.rayvinchen.async.event.boot.starter.loader.DefaultAsyncEventLoader;
-import com.rayvinchen.async.event.core.executor.AsyncEventDispatcher;
+import com.rayvinchen.async.event.core.AsyncEventWorker;
 import com.rayvinchen.async.event.core.executor.AsyncEventExecutor;
 import com.rayvinchen.async.event.core.executor.DefaultAsyncEventExecutor;
 import com.rayvinchen.async.event.core.executor.handler.AsyncEventHandler;
 import com.rayvinchen.async.event.core.executor.handler.AsyncEventHandlerDelegate;
 import com.rayvinchen.async.event.core.repository.AsyncEventRecordRepository;
 import com.rayvinchen.async.event.core.repository.AsyncEventRepository;
-import com.rayvinchen.async.event.core.template.AsyncEventTemplate;
+import com.rayvinchen.async.event.core.AsyncEventTemplate;
 import com.rayvinchen.async.event.core.template.LockTemplate;
 import org.redisson.spring.starter.RedissonAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
@@ -61,9 +61,15 @@ public class AsyncEventAutoConfiguration {
     public AsyncEventExecutor asyncEventExecutor(AsyncEventRepository asyncEventRepository,
                                                  AsyncEventRecordRepository asyncEventRecordRepository,
                                                  LockTemplate lockTemplate,
-                                                 AsyncEventHandlerDelegate asyncEventHandlerDelegate) {
-        return new DefaultAsyncEventExecutor(asyncEventRepository, asyncEventRecordRepository,
-                lockTemplate, asyncEventHandlerDelegate);
+                                                 AsyncEventHandlerDelegate asyncEventHandlerDelegate,
+                                                 AsyncEventProperties properties) {
+        return new DefaultAsyncEventExecutor(
+                asyncEventRepository,
+                asyncEventRecordRepository,
+                lockTemplate,
+                asyncEventHandlerDelegate,
+                properties.getWorker().getShutdownTimeoutSeconds()
+        );
     }
 
     /**
@@ -74,25 +80,25 @@ public class AsyncEventAutoConfiguration {
      * @return 异步事件分发器
      */
     @Bean
-    public AsyncEventDispatcher asyncEventDispatcher(AsyncEventProperties properties,
-                                                     AsyncEventExecutor executor) {
-        return new AsyncEventDispatcher(properties.getThreadPool(), executor);
+    public AsyncEventWorker asyncEventDispatcher(AsyncEventProperties properties,
+                                                 AsyncEventExecutor executor) {
+        return new AsyncEventWorker(properties.getWorker(), executor);
     }
 
     /**
      * 异步事件加载器
      *
      * @param properties properties
-     * @param dispatcher 异步事件分发器
+     * @param worker 异步事件分发器
      * @param asyncEventRepository 异步事件仓库
      * @return 异步事件加载器
      */
     @Bean
     @ConditionalOnMissingBean(AsyncEventLoader.class)
     public AsyncEventLoader asyncEventLoader(AsyncEventProperties properties,
-                                             AsyncEventDispatcher dispatcher,
+                                             AsyncEventWorker worker,
                                              AsyncEventRepository asyncEventRepository) {
-        return new DefaultAsyncEventLoader(properties, dispatcher, asyncEventRepository);
+        return new DefaultAsyncEventLoader(properties, worker, asyncEventRepository);
     }
 
     /**
@@ -100,14 +106,14 @@ public class AsyncEventAutoConfiguration {
      *
      * @param asyncEventRepository 异步事件仓库
      * @param asyncEventRecordRepository 异步事件记录仓库
-     * @param asyncEventDispatcher 异步事件分发器
+     * @param asyncEventWorker 异步事件分发器
      * @return 异步事件Template
      */
     @Bean
     public AsyncEventTemplate asyncEventTemplate(AsyncEventRepository asyncEventRepository,
                                                  AsyncEventRecordRepository asyncEventRecordRepository,
-                                                 AsyncEventDispatcher asyncEventDispatcher) {
-        return new AsyncEventTemplate(asyncEventRepository, asyncEventRecordRepository, asyncEventDispatcher);
+                                                 AsyncEventWorker asyncEventWorker) {
+        return new AsyncEventTemplate(asyncEventRepository, asyncEventRecordRepository, asyncEventWorker);
     }
 
 }

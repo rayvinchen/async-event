@@ -14,6 +14,7 @@ import org.springframework.util.CollectionUtils;
 
 import java.util.List;
 import java.util.Objects;
+import java.time.Instant;
 
 /**
  * DefaultAsyncEventRepository
@@ -79,6 +80,17 @@ public class DefaultAsyncEventRepository implements AsyncEventRepository {
         int affectRows = asyncEventMapper.insert(model);
         event.setId(model.getId());
         return affectRows;
+    }
+
+    @Override
+    public int updateHeartbeat(Long eventId, Instant heartbeatAt) {
+        // 仅当事件处于执行中(3)时更新心跳；为避免本地时钟偏移，直接使用数据库时间函数
+        LambdaUpdateWrapper<DBAsyncEvent> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(DBAsyncEvent::getId, eventId)
+                .eq(DBAsyncEvent::getEventStatus, AsyncEventStatusEnum.EXECUTING.getCode())
+                // 使用 SQL 直接设置 NOW(3)
+                .setSql("heartbeat_at = NOW(3)");
+        return asyncEventMapper.update(null, wrapper);
     }
 
     private AsyncEvent toEntity(DBAsyncEvent model) {

@@ -1,6 +1,6 @@
 package com.rayvinchen.async.event.boot.starter;
 
-import com.rayvinchen.async.event.core.properties.ThreadPoolProperties;
+import com.rayvinchen.async.event.core.properties.WorkerProperties;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -22,22 +22,7 @@ public class AsyncEventProperties {
     /**
      * 线程池配置
      */
-    private ThreadPoolProperties threadPool = new ThreadPoolProperties();
-
-    /**
-     * 队列配置
-     */
-    private QueueProperties queue = new QueueProperties();
-
-    /**
-     * 监控配置
-     */
-    private MonitorProperties monitor = new MonitorProperties();
-
-    /**
-     * 优雅关闭配置
-     */
-    private ShutdownProperties shutdown = new ShutdownProperties();
+    private WorkerProperties worker = new WorkerProperties();
 
     /**
      * 任务加载器配置
@@ -61,17 +46,6 @@ public class AsyncEventProperties {
     }
 
     /**
-     * 队列配置
-     */
-    @Data
-    public static class QueueProperties {
-        /**
-         * 内存队列容量
-         */
-        private int capacity = 10000;
-    }
-
-    /**
      * 监控配置
      */
     @Data
@@ -87,14 +61,4 @@ public class AsyncEventProperties {
         private long logInterval = 60000;
     }
 
-    /**
-     * 优雅关闭配置
-     */
-    @Data
-    public static class ShutdownProperties {
-        /**
-         * 关闭超时时间(秒)
-         */
-        private int timeoutSeconds = 60;
-    }
 }

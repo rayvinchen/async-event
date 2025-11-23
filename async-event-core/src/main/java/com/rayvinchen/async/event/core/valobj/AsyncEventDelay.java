@@ -23,18 +23,12 @@ public class AsyncEventDelay implements Delayed {
     private Long eventId;
 
     /**
-     * 完整的异步事件信息
-     */
-    private AsyncEvent asyncEvent;
-
-    /**
      * 期望执行时间的毫秒时间戳(用于Delayed接口)
      */
     private long executeTimeMillis;
 
     public AsyncEventDelay(AsyncEvent asyncEvent) {
         this.eventId = asyncEvent.getId();
-        this.asyncEvent = asyncEvent;
         this.executeTimeMillis = toMillis(asyncEvent.getExpectExecAt());
     }
 
@@ -74,7 +68,7 @@ public class AsyncEventDelay implements Delayed {
     @Override
     public String toString() {
         return "MemoryAsyncTask{" +
-                "asyncEvent=" + asyncEvent +
+                "eventId=" + eventId +
                 '}';
     }
 }

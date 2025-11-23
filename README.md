@@ -5,7 +5,7 @@
 ## 核心角色
 
 - Loader：周期扫描数据库，将满足条件的事件加载进内存队列。
-- Dispatcher：内存分发器，基于线程池异步执行任务，管理队列与执行状态。
+- worker：内存分发器，基于线程池异步执行任务，管理队列与执行状态。
 - Executor：执行器，负责状态流转、分布式锁、重试与记录。
 - Handler：业务处理器，你的业务代码实现，按 `eventType` 路由。
 - Template：业务入口模板，提供注册/取消事件的便捷方法。
@@ -149,7 +149,7 @@ public class UserCreatedHandler implements AsyncEventHandler {
 在业务代码中注入 `AsyncEventTemplate` 并调用：
 
 ```java
-import com.rayvinchen.async.event.core.template.AsyncEventTemplate;
+import com.rayvinchen.async.event.core.AsyncEventTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -200,7 +200,7 @@ public class UserService {
 流程简介：
 
 1. 注册事件，初始为 `WAIT_EXEC`，记录一条 `AsyncEventRecord`。
-2. Loader 周期扫描，或 Template 直接投递，Dispatcher 将事件放入线程池执行队列。
+2. Loader 周期扫描，或 Template 直接投递，worker 将事件放入线程池执行队列。
 3. Executor 获取分布式锁，拉取事件最新状态并流转：`WAIT_EXEC/WAIT_RETRY -> EXECUTING`，更新执行时间。
 4. 调用 Handler 处理：
    - 成功：更新为 `EXECUTE_SUCCESS`，记录成功轨迹。
