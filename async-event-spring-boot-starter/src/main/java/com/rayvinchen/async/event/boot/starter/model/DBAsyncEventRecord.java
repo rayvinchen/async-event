@@ -1,4 +1,4 @@
-package com.rayvinchen.async.event.infra.persistence.po;
+package com.rayvinchen.async.event.boot.starter.model;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -16,14 +16,14 @@ import java.time.LocalDateTime;
  * </p>
  *
  * @author rayvinchen
- * @since 2025-11-04
+ * @since 2025-11-22
  */
 @Getter
 @Setter
 @ToString
 @Accessors(chain = true)
 @TableName("async_event_record")
-public class AsyncEventRecordPO {
+public class DBAsyncEventRecord {
 
       /**
      * 主键ID
@@ -39,7 +39,7 @@ public class AsyncEventRecordPO {
       /**
      * 事件状态
      */
-      private Byte state;
+      private Byte executeStatus;
 
       /**
      * 执行时间
