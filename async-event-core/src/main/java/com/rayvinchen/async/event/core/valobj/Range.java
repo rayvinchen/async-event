@@ -12,7 +12,7 @@ import lombok.Getter;
  */
 @Getter
 @Builder
-public class Range<T extends Comparable<T>> {
+public class Range<T> {
 
     /**
      * 开始

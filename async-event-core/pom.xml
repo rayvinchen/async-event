@@ -50,6 +50,12 @@
             <artifactId>spring-context</artifactId>
         </dependency>
 
+        <!-- Transaction support for programmatic transactions (TransactionTemplate) -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>

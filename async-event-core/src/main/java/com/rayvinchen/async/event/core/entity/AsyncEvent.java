@@ -40,6 +40,11 @@ public class AsyncEvent {
     private LocalDateTime execAt;
 
     /**
+     * 心跳时间
+     */
+    private LocalDateTime heartbeatAt;
+
+    /**
      * 完成时间
      */
     private LocalDateTime finishedAt;

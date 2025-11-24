@@ -22,7 +22,7 @@ public interface AsyncEventRepository {
      * @param query 查询条件
      * @return 异步事件列表
      */
-    List<AsyncEvent> listAsyncEvents(ListAsyncEventQuery query);
+    List<AsyncEvent> listAsyncEvents(ListAsyncEventQuery query, int limit);
 
     /**
      * 根据ID查询异步事件
@@ -61,7 +61,7 @@ public interface AsyncEventRepository {
     /**
      * 周期性心跳更新：仅当事件处于 EXECUTING 时更新心跳时间。
      *
-     * 实现建议使用数据库时间（如 MySQL NOW(3)）以避免时钟偏移；本参数仅为 SPI 一致性保留。
+     * 实现建议使用数据库时间（如 MySQL NOW()）以避免时钟偏移；本参数仅为 SPI 一致性保留。
      * 返回影响行数：1 表示成功，0 表示条件不满足或事件已不在执行中。
      *
      * @param eventId     事件ID

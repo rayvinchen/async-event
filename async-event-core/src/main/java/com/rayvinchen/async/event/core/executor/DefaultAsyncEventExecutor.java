@@ -8,11 +8,11 @@ import com.rayvinchen.async.event.core.exception.AsyncEventException;
 import com.rayvinchen.async.event.core.executor.handler.AsyncEventHandlerDelegate;
 import com.rayvinchen.async.event.core.repository.AsyncEventRecordRepository;
 import com.rayvinchen.async.event.core.repository.AsyncEventRepository;
-import com.rayvinchen.async.event.core.template.LockTemplate;
 import com.rayvinchen.async.event.core.util.Asserts;
 import com.rayvinchen.async.event.core.valobj.AsyncEventExecContext;
 import com.rayvinchen.async.event.core.valobj.ExecResult;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -35,8 +35,6 @@ public class DefaultAsyncEventExecutor implements AsyncEventExecutor {
 
     private final AsyncEventRepository asyncEventRepository;
 
-    private final LockTemplate lockTemplate;
-
     private final AsyncEventHandlerDelegate handler;
 
     private static final int MAX_RETRY_TIMES = 5;
@@ -44,17 +42,18 @@ public class DefaultAsyncEventExecutor implements AsyncEventExecutor {
     // 心跳调度相关
     private final int heartbeatIntervalSeconds;
     private final ScheduledExecutorService heartbeatScheduler;
+    private final TransactionTemplate transactionTemplate;
 
     public DefaultAsyncEventExecutor(AsyncEventRepository asyncEventRepository,
                                      AsyncEventRecordRepository asyncEventRecordRepository,
-                                     LockTemplate lockTemplate,
                                      AsyncEventHandlerDelegate handler,
-                                     int heartbeatIntervalSeconds) {
+                                     int heartbeatIntervalSeconds,
+                                     TransactionTemplate transactionTemplate) {
         this.asyncEventRecordRepository = asyncEventRecordRepository;
         this.asyncEventRepository = asyncEventRepository;
-        this.lockTemplate = lockTemplate;
         this.handler = handler;
         this.heartbeatIntervalSeconds = heartbeatIntervalSeconds > 0 ? heartbeatIntervalSeconds : 10;
+        this.transactionTemplate = transactionTemplate;
 
         // 心跳调度线程池（单线程足够，主要是周期性小写操作）
         ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(1,
@@ -69,14 +68,12 @@ public class DefaultAsyncEventExecutor implements AsyncEventExecutor {
 
         Long eventId = context.getEventId();
 
-        // 加分布式锁
-        String lockKey = String.join(":", "ASYNC-EVENT", "EVENT-ID-" + eventId);
-        LockTemplate.LockRecord lockRecord = lockTemplate.tryLock(lockKey, 0, 0, TimeUnit.MILLISECONDS);
-        if (lockRecord == null) {
-            return ExecResult.builder().success(false).failReason("Failed to acquire lock.").build();
+        AsyncEvent event = asyncEventRepository.getAsyncEvent(eventId);
+        if (Objects.isNull(event)) {
+            log.warn("[AsyncEvent] Fail to get event. eventId={}", eventId);
+            return ExecResult.builder().success(false).failReason("Event not found.").build();
         }
 
-        AsyncEvent event = asyncEventRepository.getAsyncEvent(eventId);
         ExecResult execResult;
         ScheduledFuture<?> hbFuture = null;
         try {
@@ -104,7 +101,6 @@ public class DefaultAsyncEventExecutor implements AsyncEventExecutor {
                 } catch (Exception ignore) {
                 }
             }
-            lockTemplate.unlock(lockRecord);
         }
 
         return execResult;
@@ -125,22 +121,26 @@ public class DefaultAsyncEventExecutor implements AsyncEventExecutor {
     }
 
     private void beforeHandle(AsyncEvent event) {
-        if (Objects.equals(event.getEventStatus(), AsyncEventStatusEnum.WAIT_EXEC.getCode())) {
-            // 将任务状态从待执行改为执行中
-            int affectRows = asyncEventRepository.updateEventStatus(event.getId(), AsyncEventStatusEnum.WAIT_EXEC, AsyncEventStatusEnum.EXECUTING);
-            Asserts.check(affectRows > 0, String.format("[AsyncEvent] Fail to update status. before: %s. event: %d", event.getEventStatus(), event.getId()));
-            // 更新执行时间
-            AsyncEvent waitUpdateEvent = new AsyncEvent();
-            waitUpdateEvent.setId(event.getId());
-            waitUpdateEvent.setExecAt(LocalDateTime.now());
-            asyncEventRepository.updateAsyncEventById(waitUpdateEvent);
-        } else if (Objects.equals(event.getEventStatus(), AsyncEventStatusEnum.WAIT_RETRY.getCode())) {
-            // 将任务状态从待执行改为执行中
-            int affectRows = asyncEventRepository.updateEventStatus(event.getId(), AsyncEventStatusEnum.WAIT_RETRY, AsyncEventStatusEnum.EXECUTING);
-            Asserts.check(affectRows > 0, String.format("[AsyncEvent] Fail to update status. before: %s. event: %d", event.getEventStatus(), event.getId()));
-        }
+        // 使用编程式事务，确保状态迁移与时间字段更新的原子性
+        transactionTemplate.executeWithoutResult(status -> {
+            if (Objects.equals(event.getEventStatus(), AsyncEventStatusEnum.WAIT_EXEC.getCode())) {
+                // 将任务状态从待执行改为执行中
+                int affectRows = asyncEventRepository.updateEventStatus(event.getId(), AsyncEventStatusEnum.WAIT_EXEC, AsyncEventStatusEnum.EXECUTING);
+                Asserts.check(affectRows > 0, String.format("[AsyncEvent] Fail to update status. before: %s. event: %d", event.getEventStatus(), event.getId()));
+                // 更新执行时间
+                AsyncEvent waitUpdateEvent = new AsyncEvent();
+                waitUpdateEvent.setId(event.getId());
+                waitUpdateEvent.setExecAt(LocalDateTime.now());
+                asyncEventRepository.updateAsyncEventById(waitUpdateEvent);
+            } else if (Objects.equals(event.getEventStatus(), AsyncEventStatusEnum.WAIT_RETRY.getCode())) {
+                // 将任务状态从待重试改为执行中
+                int affectRows = asyncEventRepository.updateEventStatus(event.getId(), AsyncEventStatusEnum.WAIT_RETRY, AsyncEventStatusEnum.EXECUTING);
+                Asserts.check(affectRows > 0, String.format("[AsyncEvent] Fail to update status. before: %s. event: %d", event.getEventStatus(), event.getId()));
+            }
 
-        event.setEventStatus(AsyncEventStatusEnum.EXECUTING.getCode());
+            // 更新内存态，便于后续逻辑判断
+            event.setEventStatus(AsyncEventStatusEnum.EXECUTING.getCode());
+        });
     }
 
     private void afterHandleSuccess(AsyncEvent event) {

@@ -4,7 +4,7 @@ package com.rayvinchen.async.event.core.valobj;
 import lombok.Builder;
 import lombok.Getter;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 import java.util.Set;
 
 /**
@@ -25,6 +25,13 @@ public class ListAsyncEventQuery {
     /**
      * 期望执行时间范围
      */
-    private final Range<Date> expectTimeRange;
+    private final Range<LocalDateTime> expectAtRange;
+
+    /**
+     * 心跳时间范围
+     */
+    private final Range<LocalDateTime> heartbeatAtRange;
+
+
 
 }

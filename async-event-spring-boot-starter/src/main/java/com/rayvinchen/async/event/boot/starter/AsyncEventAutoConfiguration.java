@@ -2,11 +2,11 @@ package com.rayvinchen.async.event.boot.starter;
 
 
 import com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration;
-import com.rayvinchen.async.event.boot.starter.config.LockTemplateConfig;
 import com.rayvinchen.async.event.boot.starter.config.MybatisConfig;
 import com.rayvinchen.async.event.boot.starter.config.RepositoryConfig;
 import com.rayvinchen.async.event.boot.starter.loader.AsyncEventLoader;
 import com.rayvinchen.async.event.boot.starter.loader.DefaultAsyncEventLoader;
+import com.rayvinchen.async.event.core.AsyncEventTemplate;
 import com.rayvinchen.async.event.core.AsyncEventWorker;
 import com.rayvinchen.async.event.core.executor.AsyncEventExecutor;
 import com.rayvinchen.async.event.core.executor.DefaultAsyncEventExecutor;
@@ -14,14 +14,13 @@ import com.rayvinchen.async.event.core.executor.handler.AsyncEventHandler;
 import com.rayvinchen.async.event.core.executor.handler.AsyncEventHandlerDelegate;
 import com.rayvinchen.async.event.core.repository.AsyncEventRecordRepository;
 import com.rayvinchen.async.event.core.repository.AsyncEventRepository;
-import com.rayvinchen.async.event.core.AsyncEventTemplate;
-import com.rayvinchen.async.event.core.template.LockTemplate;
-import org.redisson.spring.starter.RedissonAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 
@@ -31,8 +30,8 @@ import java.util.List;
  * @author rayvinchen
  * @since 2025/11/9 11:41
  */
-@Import({LockTemplateConfig.class, MybatisConfig.class, RepositoryConfig.class})
-@AutoConfigureAfter({MybatisPlusAutoConfiguration.class, RedissonAutoConfiguration.class})
+@Import({MybatisConfig.class, RepositoryConfig.class})
+@AutoConfigureAfter({MybatisPlusAutoConfiguration.class})
 @EnableConfigurationProperties(AsyncEventProperties.class)
 public class AsyncEventAutoConfiguration {
 
@@ -52,7 +51,6 @@ public class AsyncEventAutoConfiguration {
      *
      * @param asyncEventRepository 异步事件仓库
      * @param asyncEventRecordRepository 异步事件记录仓库
-     * @param lockTemplate 分布式锁Template
      * @param asyncEventHandlerDelegate 异步事件处理器代理
      * @return 异步事件执行器
      */
@@ -60,15 +58,15 @@ public class AsyncEventAutoConfiguration {
     @ConditionalOnMissingBean(AsyncEventExecutor.class)
     public AsyncEventExecutor asyncEventExecutor(AsyncEventRepository asyncEventRepository,
                                                  AsyncEventRecordRepository asyncEventRecordRepository,
-                                                 LockTemplate lockTemplate,
                                                  AsyncEventHandlerDelegate asyncEventHandlerDelegate,
-                                                 AsyncEventProperties properties) {
+                                                 AsyncEventProperties properties,
+                                                 PlatformTransactionManager txManager) {
         return new DefaultAsyncEventExecutor(
                 asyncEventRepository,
                 asyncEventRecordRepository,
-                lockTemplate,
                 asyncEventHandlerDelegate,
-                properties.getWorker().getShutdownTimeoutSeconds()
+                properties.getWorker().getHeartbeatIntervalSeconds(),
+                new TransactionTemplate(txManager)
         );
     }
 
