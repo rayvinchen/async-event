@@ -5,8 +5,8 @@
 ## 核心角色
 
 - Loader：周期扫描数据库，将满足条件的事件加载进内存队列。
-- worker：内存分发器，基于线程池异步执行任务，管理队列与执行状态。
-- Executor：执行器，负责状态流转、分布式锁、重试与记录。
+- Worker：内存分发器，基于线程池异步执行任务，管理队列与执行状态。
+- Executor：执行器，负责状态流转、重试与记录。
 - Handler：业务处理器，你的业务代码实现，按 `eventType` 路由。
 - Template：业务入口模板，提供注册/取消事件的便捷方法。
 
@@ -27,7 +27,6 @@
 前置依赖说明：
 
 - 数据源与 MyBatis-Plus：需要配置好你的 DataSource 与 MyBatis-Plus（starter 已做自动装配）。
-- 分布式锁：默认使用 Redisson（`org.redisson:redisson-spring-boot-starter`），确保你的应用已正确配置 Redis/Redisson。
 
 ### 2. 初始化数据库表
 
@@ -73,31 +72,20 @@ create table `async_event_record` (
 async-event:
   # Loader 扫描与预加载配置
   loader:
-    scanInterval: 10000      # 扫描间隔(ms)
-    batchSize: 1000          # 每次批量加载大小
-    lookAheadSeconds: 30     # 预加载窗口(s)
+    scanIntervalSeconds: 10   # 扫描间隔(秒)
+    batchSize: 200            # 每次批量加载大小
+    lookAheadSeconds: 30      # 预加载窗口(秒)
+    maxInMemoryTasks: 0       # 内存任务上限，<=0 时按 3 * worker.queueCapacity 动态估算
 
-  # 内存队列配置
-  queue:
-    capacity: 10000          # 内存队列容量
-
-  # 线程池配置（也可依赖自动策略）
-  threadPool:
-    corePoolSize: 0          # 0=自动=CPU*2
-    maxPoolSize: 0           # 0=自动=CPU*4
-    queueCapacity: 2000
+  # worker/线程池配置（0 = 自动推导）
+  worker:
+    corePoolSize: 0           # 0=自动=CPU*2
+    maxPoolSize: 0            # 0=自动=CPU*4
+    queueCapacity: 2000       # 工作队列大小
     keepAliveSeconds: 60
     threadNamePrefix: async-event-worker
     shutdownTimeoutSeconds: 60
-
-  # 监控（日志打印）配置
-  monitor:
-    enabled: true
-    logInterval: 60000       # 日志打印间隔(ms)
-
-  # 优雅关闭
-  shutdown:
-    timeoutSeconds: 60
+    heartbeatIntervalSeconds: 10  # 执行中心跳写入间隔
 ```
 
 说明：
@@ -201,27 +189,27 @@ public class UserService {
 
 1. 注册事件，初始为 `WAIT_EXEC`，记录一条 `AsyncEventRecord`。
 2. Loader 周期扫描，或 Template 直接投递，worker 将事件放入线程池执行队列。
-3. Executor 获取分布式锁，拉取事件最新状态并流转：`WAIT_EXEC/WAIT_RETRY -> EXECUTING`，更新执行时间。
+3. Executor 拉取事件最新状态并原子流转：`WAIT_EXEC/WAIT_RETRY -> EXECUTING`，更新执行时间，并在执行期间按间隔写入心跳时间（`heartbeat_at`）。
 4. 调用 Handler 处理：
    - 成功：更新为 `EXECUTE_SUCCESS`，记录成功轨迹。
    - 失败：若 Handler 可重试且未达最大次数（默认最多 5 次），进入 `WAIT_RETRY`，按指数退避 `2^(executeTimes)` 分钟后重试；否则置为 `EXECUTE_FAILURE`，记录失败轨迹。
+5. 恢复与自愈：Loader 会在周期扫描中发现“心跳超时”的执行中任务并将其恢复为待执行，避免因进程异常或节点宕机造成任务长期卡死。
 
 ## 配置项与调优
 
-- `async-event.loader.scanInterval`：数据库扫描周期。任务量大/实时性高可调小；DB 压力可调大。
-- `async-event.loader.batchSize`：每次批量加载数量，结合队列容量与吞吐调优。
+- `async-event.loader.scanIntervalSeconds`：数据库扫描周期（秒）。任务量大/实时性高可调小；考虑数据库压力适度调大。
+- `async-event.loader.batchSize`：每次批量加载数量，结合线程池吞吐调优。
 - `async-event.loader.lookAheadSeconds`：预加载窗口，适当加大可降低触发延迟。
-- `async-event.queue.capacity`：内存队列容量，需与线程池速率与数据库扫描速率匹配。
-- 线程池（`async-event.threadPool.*`）：
+- `async-event.loader.maxInMemoryTasks`：Loader 在内存中的任务上限；<=0 时按 3 倍 `worker.queueCapacity` 计算，避免内存堆积。
+- 线程池（`async-event.worker.*`）：
   - `corePoolSize/maxPoolSize` 为 0 时自动按 CPU 计算（核心=CPU*2，最大=CPU*4）。
-  - `queueCapacity`：线程池工作队列大小，过小会频繁拒绝，过大可能造成响应延迟。
+  - `queueCapacity`：工作队列大小，过小易拒绝，过大可能拉长等待。
   - `keepAliveSeconds/threadNamePrefix/shutdownTimeoutSeconds`：常规参数。
-- 监控与日志：`async-event.monitor.*` 控制定期打印队列与线程池状态（日志实现见 `AsyncEventDispatcher`）。
-- 优雅停机：`async-event.shutdown.timeoutSeconds` 控制关闭等待时间，确保在应用关闭时尽量完成执行中的任务。
+  - `heartbeatIntervalSeconds`：执行中心跳写入间隔；Loader 会据此与内部策略识别“失联”任务进行恢复。
 
-## 分布式锁与并发
+## 并发与一致性
 
-Executor 使用 `LockTemplate`（默认基于 Redisson）对同一事件 ID 加锁，防止并发多实例重复执行。请确保生产环境 Redis/Redisson 可用且延迟可靠。
+组件通过数据库原子状态流转与执行中心跳，保证在多实例环境下同一事件仅有一个有效执行路径；在极端情况下可依赖 Handler 的幂等性确保业务一致性。
 
 ## MyBatis-Plus 与数据访问
 
@@ -240,9 +228,9 @@ Executor 使用 `LockTemplate`（默认基于 Redisson）对同一事件 ID 加�
 ## 常见问题（FAQ）
 
 - Q：为什么事件没有立即执行？
-  - A：检查 `expect_time` 是否在未来；Loader 扫描周期是否过大；或 Template 判断“1 分钟内”投递是否未命中。
+  - A：检查 `expect_exec_at` 是否在未来；Loader 扫描周期是否过大；或 Template 判断“1 分钟内”投递是否未命中。
 - Q：重复执行了怎么办？
-  - A：请检查 Redis/Redisson 配置，确保分布式锁可用；同时保证 Handler 幂等。
+  - A：组件通过“状态流转 + 心跳 + 恢复”降低重复执行概率；同时务必保证 Handler 幂等以应对极端情况（如节点抖动、瞬时网络异常）。
 - Q：如何自定义最大重试次数或间隔？
   - A：当前默认在 `DefaultAsyncEventExecutor` 内部固定（`MAX_RETRY_TIMES=5`，指数退避），如需外部化可在后续版本中扩展或在你分支中按需调整实现。
 - Q：如何对接告警？
@@ -253,15 +241,15 @@ Executor 使用 `LockTemplate`（默认基于 Redisson）对同一事件 ID 加�
 - `AsyncEventAutoConfiguration`：自动装配入口，创建核心 Bean。
 - `AsyncEventTemplate`：注册/取消事件的业务入口。
 - `AsyncEventDispatcher`：线程池与队列管理、生命周期控制与监控日志。
-- `DefaultAsyncEventExecutor`：状态机、锁、重试与记录。
+- `DefaultAsyncEventExecutor`：状态机、心跳、重试与记录。
+- `DefaultAsyncEventLoader`：周期加载、预加载与“失联任务”恢复。
 - `AsyncEventHandler`/`AsyncEventHandlerDelegate`：事件处理与路由。
-- `AsyncEventProperties`/`ThreadPoolProperties`：配置项。
+- `AsyncEventProperties`/`WorkerProperties`：配置项。
 
 ## 版本与环境
 
 - JDK：与工程一致（建议 17+）。
 - 数据库：以 MySQL 为例（InnoDB/utf8mb4），其他数据库需自行调整 SQL。
-- Redis/Redisson：用于分布式锁。
 
 ## 示例清单
 
