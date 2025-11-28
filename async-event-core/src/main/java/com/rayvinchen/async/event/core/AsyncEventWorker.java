@@ -45,6 +45,8 @@ public class AsyncEventWorker implements InitializingBean, DisposableBean {
 
     private final AtomicBoolean running = new AtomicBoolean(false);
 
+    private final int maxInMemoryTasks;
+
     public AsyncEventWorker(WorkerProperties properties,
                             AsyncEventExecutor executor) {
         this.properties = properties;
@@ -53,6 +55,8 @@ public class AsyncEventWorker implements InitializingBean, DisposableBean {
         this.loadedTaskQueue = new DelayQueue<>();
         this.loadedTaskMap = new ConcurrentHashMap<>();
         this.executingTasks = new ConcurrentHashMap<>();
+
+        this.maxInMemoryTasks = calcMaxInMemoryTask();
     }
 
     /**
@@ -147,9 +151,15 @@ public class AsyncEventWorker implements InitializingBean, DisposableBean {
      *
      * @param event 事件
      */
-    public void offer(AsyncEvent event) {
+    public boolean offer(AsyncEvent event) {
         if (loadedTaskMap.containsKey(event.getId())) {
-            return;
+            return true;
+        }
+
+        if (maxInMemoryTasks > 0 && getLoadedTaskCount() >= maxInMemoryTasks) {
+            log.warn("In-memory limit reached. stop loading. loaded={}, limit={}",
+                    getLoadedTaskCount(), maxInMemoryTasks);
+            return false;
         }
 
         AsyncEventDelay delayTask = new AsyncEventDelay(event);
@@ -158,6 +168,7 @@ public class AsyncEventWorker implements InitializingBean, DisposableBean {
         loadedTaskMap.put(delayTask.getEventId(), delayTask);
 
         log.info("Task Offered: {}", event);
+        return true;
     }
 
     /**
@@ -223,6 +234,23 @@ public class AsyncEventWorker implements InitializingBean, DisposableBean {
                 corePoolSize, maximumPoolSize, queueCapacity, keepAliveTime);
 
         return executor;
+    }
+
+    /**
+     * 计算 Loader 在内存中允许的最大任务数（综合阈值）
+     *
+     * 规则：
+     * - 当配置的 maxInMemoryTasks > 0 时，直接使用其值；
+     * - 否则使用默认为3倍的队列容量
+     */
+    private int calcMaxInMemoryTask() {
+        int maxInMemoryTasks = properties.getMaxInMemoryTasks();
+        if (maxInMemoryTasks > 0) {
+            return Math.max(maxInMemoryTasks, properties.getQueueCapacity());
+        }
+
+        int queueCapacity = Math.max(1, properties.getQueueCapacity());
+        return 3 * queueCapacity;
     }
 
     /**

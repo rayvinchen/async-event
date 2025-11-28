@@ -44,16 +44,6 @@ public class AsyncEventProperties {
          */
         private int lookAheadSeconds = 30;
 
-        /**
-         * Loader 在内存中允许的最大任务数（综合阈值）
-         *
-         * 说明：
-         * - 当该值 > 0 时，作为绝对上限生效；
-         * - 当该值 <= 0 时，采用 3 * worker.queueCapacity 作为动态上限；
-         *
-         * 目的：避免仅按线程池工作队列容量进行估算导致的内存堆积。
-         */
-        private int maxInMemoryTasks = 0;
     }
 
     /**

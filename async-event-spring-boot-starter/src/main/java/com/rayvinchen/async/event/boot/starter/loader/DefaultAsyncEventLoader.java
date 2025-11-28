@@ -149,43 +149,19 @@ public class DefaultAsyncEventLoader implements AsyncEventLoader, InitializingBe
             return;
         }
 
-        // 计算内存 Loader 加载任务上限
-        int maxInMemoryTasks = calcMaxInMemoryTask();
-
         // 加入优先级队列和索引
         int loadedCount = 0;
         for (AsyncEvent event : events) {
-            if (maxInMemoryTasks > 0 && worker.getLoadedTaskCount() >= maxInMemoryTasks) {
-                log.warn("[{}] In-memory limit reached. stop loading. loaded={}, limit={}",
-                        title, worker.getLoadedTaskCount(), maxInMemoryTasks);
+            // 加入队列
+            if (!worker.offer(event)) {
                 break;
             }
-
-            // 加入队列
-            worker.offer(event);
             loadedCount++;
             log.debug("[{}] Task loaded: {}", title, event);
         }
 
         log.info("[{}] Loaded {} tasks to memory queue. Total loaded tasks: {}, Queue size: {}",
                 title, loadedCount, worker.getLoadedTaskCount(), worker.getTaskQueueSize());
-    }
-
-    /**
-     * 计算 Loader 在内存中允许的最大任务数（综合阈值）
-     *
-     * 规则：
-     * - 当配置的 maxInMemoryTasks > 0 时，直接使用其值；
-     * - 否则使用默认为3倍的队列容量
-     */
-    private int calcMaxInMemoryTask() {
-        int maxInMemoryTasks = properties.getLoader().getMaxInMemoryTasks();
-        if (maxInMemoryTasks > 0) {
-            return Math.max(maxInMemoryTasks, properties.getWorker().getQueueCapacity());
-        }
-
-        int queueCapacity = Math.max(1, properties.getWorker().getQueueCapacity());
-        return 3 * queueCapacity;
     }
 
     @Override

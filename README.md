@@ -4,10 +4,10 @@
 
 ## 核心角色
 
-- Loader：周期扫描数据库，将满足条件的事件加载进内存队列。
-- Worker：内存分发器，基于线程池异步执行任务，管理队列与执行状态。
-- Executor：执行器，负责状态流转、重试与记录。
-- Handler：业务处理器，你的业务代码实现，按 `eventType` 路由。
+- Loader：周期扫描数据库，将满足条件的事件加载进内存队列，交给Worker进行事件的分发与执行。
+- Worker：核心工作者，将Loader所加载的异步事件存储在内存队列中（delay queue），然后基于线程池异步执行delay queue中的任务，并管理队列与执行状态。
+- Executor：异步事件执行器，负责异步事件的执行过程生命周期，包括状态流转、重试与记录执行日志等。
+- Handler：真正的异步事件业务处理器，你的业务代码实现，按 `eventType` 路由。
 - Template：业务入口模板，提供注册/取消事件的便捷方法。
 
 ## 快速开始
@@ -75,7 +75,6 @@ async-event:
     scanIntervalSeconds: 10   # 扫描间隔(秒)
     batchSize: 200            # 每次批量加载大小
     lookAheadSeconds: 30      # 预加载窗口(秒)
-    maxInMemoryTasks: 0       # 内存任务上限，<=0 时按 3 * worker.queueCapacity 动态估算
 
   # worker/线程池配置（0 = 自动推导）
   worker:
@@ -84,6 +83,7 @@ async-event:
     queueCapacity: 2000       # 工作队列大小
     keepAliveSeconds: 60
     threadNamePrefix: async-event-worker
+    maxInMemoryTasks: 0       # 内存任务上限，<=0 时按 3 * worker.queueCapacity 动态估算
     shutdownTimeoutSeconds: 60
     heartbeatIntervalSeconds: 10  # 执行中心跳写入间隔
 ```
@@ -112,8 +112,7 @@ public class UserCreatedHandler implements AsyncEventHandler {
         String payload = event.getEventData();
         // 执行业务逻辑...
         boolean ok = true; // 你的处理结果
-        return ok ? ExecResult.builder().success(true).build()
-                  : ExecResult.builder().success(false).failReason("biz error").build();
+        return ok ? ExecResult.success(true) : ExecResult.failure("biz error");
     }
 
     @Override
@@ -172,7 +171,7 @@ public class UserService {
 
 重要：`registerAsyncEvent` 建议与本地事务在同一事务中，保证“业务数据与事件”要么都成功，要么都失败，避免数据/事件不一致。
 
-此外，Template 内部有“近实时”优化：当期望执行时间在当前时间之前或 1 分钟之内时，会直接将事件投递到内存分发器，降低 Loader 扫描压力并加速执行。
+此外，Template 内部有“近实时”优化：当期望执行时间在当前时间之前或 1 分钟之内时，会直接将事件投递到内存分发器。
 
 ## 运行机制与状态机
 
@@ -188,7 +187,7 @@ public class UserService {
 流程简介：
 
 1. 注册事件，初始为 `WAIT_EXEC`，记录一条 `AsyncEventRecord`。
-2. Loader 周期扫描，或 Template 直接投递，worker 将事件放入线程池执行队列。
+2. Loader 周期扫描，或 Template 直接投递，Worker 将事件放入延时队列中，等待到达执行时间后，放入线程池执行队列。
 3. Executor 拉取事件最新状态并原子流转：`WAIT_EXEC/WAIT_RETRY -> EXECUTING`，更新执行时间，并在执行期间按间隔写入心跳时间（`heartbeat_at`）。
 4. 调用 Handler 处理：
    - 成功：更新为 `EXECUTE_SUCCESS`，记录成功轨迹。
