@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.util.CollectionUtils;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -29,6 +30,10 @@ public class DefaultAsyncEventRepository implements AsyncEventRepository {
 
     @Override
     public List<AsyncEvent> listAsyncEvents(ListAsyncEventQuery query, int limit) {
+        if (!query.needQuery()) {
+            return Collections.emptyList();
+        }
+
         LambdaQueryWrapper<DBAsyncEvent> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.in(!CollectionUtils.isEmpty(query.getStatusSet()), DBAsyncEvent::getEventStatus, query.getStatusSet());
 
@@ -86,12 +91,20 @@ public class DefaultAsyncEventRepository implements AsyncEventRepository {
 
     @Override
     public AsyncEvent getAsyncEvent(Long id) {
+        if (Objects.isNull(id)) {
+            return null;
+        }
+
         DBAsyncEvent model = asyncEventMapper.selectById(id);
         return toEntity(model);
     }
 
     @Override
     public int updateEventStatus(Long id, AsyncEventStatusEnum originStatus, AsyncEventStatusEnum newStatus) {
+        if (Objects.isNull(id)) {
+            return 0;
+        }
+
         LambdaUpdateWrapper<DBAsyncEvent> wrapper = new LambdaUpdateWrapper<>();
         wrapper.set(DBAsyncEvent::getEventStatus, newStatus.getCode());
         wrapper.eq(DBAsyncEvent::getId, id)
@@ -102,6 +115,10 @@ public class DefaultAsyncEventRepository implements AsyncEventRepository {
 
     @Override
     public int updateAsyncEventById(AsyncEvent event) {
+        if (Objects.isNull(event) || Objects.isNull(event.getId())) {
+            return 0;
+        }
+
         DBAsyncEvent model = toModel(event);
         return asyncEventMapper.updateById(model);
     }
@@ -109,6 +126,7 @@ public class DefaultAsyncEventRepository implements AsyncEventRepository {
     @Override
     public int addAsyncEvent(AsyncEvent event) {
         DBAsyncEvent model = toModel(event);
+        model.setId(null);
         int affectRows = asyncEventMapper.insert(model);
         event.setId(model.getId());
         return affectRows;
@@ -116,6 +134,10 @@ public class DefaultAsyncEventRepository implements AsyncEventRepository {
 
     @Override
     public int updateHeartbeat(Long eventId, Instant heartbeatAt) {
+        if (Objects.isNull(eventId)) {
+            return 0;
+        }
+
         // 仅当事件处于执行中(3)时更新心跳；为避免本地时钟偏移，直接使用数据库时间函数
         LambdaUpdateWrapper<DBAsyncEvent> wrapper = new LambdaUpdateWrapper<>();
         wrapper.eq(DBAsyncEvent::getId, eventId)

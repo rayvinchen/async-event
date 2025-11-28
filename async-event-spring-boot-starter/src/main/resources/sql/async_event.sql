@@ -10,5 +10,11 @@ create table `async_event` (
     `exec_times` int not null default 0 comment '执行次数',
     `creator` varchar(32) not null comment '创建者',
     `create_at` datetime not null default current_timestamp comment '创建时间',
-    `update_at` datetime not null default current_timestamp on update current_timestamp comment '更新时间'
+    `update_at` datetime not null default current_timestamp on update current_timestamp comment '更新时间',
+
+    -- 查询/调度常用索引设计：
+    -- 1) 按状态+期望执行时间范围扫描并升序取前 N 条
+    key `idx_expect_status` (`expect_exec_at`, `event_status`, `id`),
+    -- 2) 按状态+心跳时间范围扫描（恢复场景）并升序取前 N 条
+    key `idx_heartbeat_status` (`heartbeat_at`, `event_status`, `id`)
 ) engine=innodb default charset=utf8mb4 comment='异步事件表';

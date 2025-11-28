@@ -3,8 +3,10 @@ package com.rayvinchen.async.event.core.valobj;
 
 import lombok.Builder;
 import lombok.Getter;
+import org.springframework.util.CollectionUtils;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -32,6 +34,8 @@ public class ListAsyncEventQuery {
      */
     private final Range<LocalDateTime> heartbeatAtRange;
 
-
+    public boolean needQuery() {
+        return !CollectionUtils.isEmpty(statusSet) || Objects.nonNull(expectAtRange) || Objects.nonNull(heartbeatAtRange);
+    }
 
 }
